@@ -1,0 +1,12 @@
+services:
+  cache_redis:
+    image: redis:7.2
+    container_name: claude_tutor_cache
+    restart: always
+    ports:
+      - "11000:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
