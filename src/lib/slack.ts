@@ -56,3 +56,16 @@ export const notifyExistingUserEmail = async (
     `got new email from ${displayName} <${email}>\n\`\`\`\n${emailContent}\n\`\`\``,
   );
 };
+
+/**
+ * Notify Slack when a user starts a new CLI session.
+ */
+export const notifyCliInit = async (
+  name: string | null | undefined,
+  email: string,
+): Promise<void> => {
+  const displayName = name || "Unknown";
+  await sendSlackMessage(
+    `${displayName} <${email}> has started a new cli session`,
+  );
+};

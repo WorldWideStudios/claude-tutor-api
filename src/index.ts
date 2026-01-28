@@ -6,6 +6,7 @@ import { inboundEmailHander } from "./lib/handlers";
 import { supabaseAdmin } from "./lib/supabase";
 import { sendEmail } from "./lib/email";
 import { generateResponse } from "./lib/llm";
+import { notifyCliInit } from "./lib/slack";
 import { SessionInitRequest, SessionInitResponse } from "./types";
 
 interface LogInteractionRequest {
@@ -188,6 +189,17 @@ app.post("/cli/init", async (req: Request, res: Response): Promise<void> => {
       res.status(401).json({ error: "Invalid or unconfirmed token" });
       return;
     }
+
+    // Fetch user name for Slack notification
+    const { data: addressInfo } = await supabaseAdmin
+      .from("address_info")
+      .select("name")
+      .eq("email", session.email)
+      .single();
+    const userName = addressInfo?.name;
+
+    // Notify Slack (fire-and-forget, don't block response)
+    notifyCliInit(userName, session.email);
 
     // Query all emails for this user
     const { data: emails, error: emailsError } = await supabaseAdmin
