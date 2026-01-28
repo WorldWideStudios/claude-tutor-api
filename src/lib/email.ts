@@ -1,6 +1,7 @@
 import Inbound from "inboundemail";
 import { IncomingEmail } from "../types";
 import { generateResponse } from "./llm";
+import { notifyExistingUserEmail, notifyNewUser } from "./slack";
 import { supabaseAdmin } from "./supabase";
 import { randomBytes } from "crypto";
 
@@ -55,7 +56,19 @@ export const respondToEmail = async (emailId: number) => {
 
   console.log("got here with past emails:", pastEmails);
 
+  // Get user name for Slack notification
+  const addressInfo = await supabaseAdmin
+    .from("address_info")
+    .select("name")
+    .eq("email", emailRecord.data?.from)
+    .single();
+  const userName = addressInfo.data?.name;
+  const userEmail = emailRecord.data?.from!;
+
   if (pastEmails?.data?.length === 1) {
+    // Notify Slack of new user
+    await notifyNewUser(userName, userEmail);
+
     // Generate secure random token (64-character hex string)
     const token = randomBytes(32).toString("hex");
 
@@ -95,6 +108,9 @@ Claude Tutor
       welcomeMessage,
     );
   } else {
+    // Notify Slack of existing user email
+    await notifyExistingUserEmail(userName, userEmail);
+
     const sessionData = await supabaseAdmin
       .from("sessions")
       .select("*")
