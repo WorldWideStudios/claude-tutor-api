@@ -149,21 +149,120 @@ Claude Tutor
       token = sessionData.data.token;
     }
 
-    const chatHistory: {
+    // Fetch CLI interactions for this session (last 10)
+    const cliInteractions = await supabaseAdmin
+      .from("cli_interactions")
+      .select("*")
+      .eq("session_token", token)
+      .order("created_at", { ascending: false })
+      .limit(10);
+
+    // Build unified history items with timestamps for chronological sorting
+    type HistoryItem = {
       role: "user" | "assistant";
       content: string;
-    }[] = [];
+      created_at: string;
+      source: "email" | "cli";
+    };
+
+    const historyItems: HistoryItem[] = [];
+
+    // Add email history
     if (pastEmails.data && pastEmails.data.length > 0) {
       for (const email of pastEmails.data) {
-        chatHistory.push({
+        historyItems.push({
           role: email.direction === "SEND" ? "assistant" : "user",
           content: email.text,
+          created_at: email.created_at,
+          source: "email",
         });
       }
     }
+
+    // Add CLI interactions history (reversed to ascending order since we fetched desc)
+    if (cliInteractions.data && cliInteractions.data.length > 0) {
+      for (const interaction of cliInteractions.data.reverse()) {
+        const { interaction_type, question_text, answer_text, created_at } =
+          interaction;
+
+        if (
+          interaction_type === "initial_question" ||
+          interaction_type === "clarifying_question"
+        ) {
+          // Two entries: assistant asks, user answers
+          if (question_text) {
+            historyItems.push({
+              role: "assistant",
+              content: question_text,
+              created_at,
+              source: "cli",
+            });
+          }
+          if (answer_text) {
+            historyItems.push({
+              role: "user",
+              content: answer_text,
+              created_at,
+              source: "cli",
+            });
+          }
+          // If both are null, add empty string entry
+          if (!question_text && !answer_text) {
+            historyItems.push({
+              role: "user",
+              content: "",
+              created_at,
+              source: "cli",
+            });
+          }
+        } else if (interaction_type === "user_selection") {
+          historyItems.push({
+            role: "user",
+            content: answer_text || "",
+            created_at,
+            source: "cli",
+          });
+        } else if (
+          interaction_type === "llm_response" ||
+          interaction_type === "profile_created"
+        ) {
+          historyItems.push({
+            role: "assistant",
+            content: answer_text || "",
+            created_at,
+            source: "cli",
+          });
+        } else {
+          // Fallback for any other interaction types
+          historyItems.push({
+            role: answer_text ? "user" : "assistant",
+            content: answer_text || question_text || "",
+            created_at,
+            source: "cli",
+          });
+        }
+      }
+    }
+
+    // Sort all history items chronologically
+    historyItems.sort(
+      (a, b) =>
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+    );
+
+    // Build final chat history with source prefixes
+    const chatHistory: {
+      role: "user" | "assistant";
+      content: string;
+    }[] = historyItems.map(({ role, content, source }) => ({
+      role,
+      content: `[${source === "email" ? "Email" : "CLI"}] ${content}`,
+    }));
+
+    // Add current incoming email
     chatHistory.push({
       role: "user",
-      content: emailRecord.data?.text || "",
+      content: `[Email] ${emailRecord.data?.text || ""}`,
     });
 
     const response = await generateResponse(chatHistory, {
