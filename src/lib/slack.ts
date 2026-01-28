@@ -10,7 +10,9 @@ const SLACK_CHANNEL = "#t-claudetutor-bot";
  */
 export const sendSlackMessage = async (text: string): Promise<void> => {
   if (!SLACK_BOT_TOKEN) {
-    console.error("SLACK_BOT_TOKEN not configured, skipping Slack notification");
+    console.error(
+      "SLACK_BOT_TOKEN not configured, skipping Slack notification",
+    );
     return;
   }
 
@@ -41,10 +43,12 @@ export const sendSlackMessage = async (text: string): Promise<void> => {
  */
 export const notifyNewUser = async (
   name: string | null | undefined,
-  email: string
+  email: string,
 ): Promise<void> => {
   const displayName = name || "Unknown";
-  await sendSlackMessage(`new user has entered the system via email ${displayName} <${email}>`);
+  await sendSlackMessage(
+    `new user has entered the system via email ${displayName} <${email}>`,
+  );
 };
 
 /**
@@ -52,7 +56,7 @@ export const notifyNewUser = async (
  */
 export const notifyExistingUserEmail = async (
   name: string | null | undefined,
-  email: string
+  email: string,
 ): Promise<void> => {
   const displayName = name || "Unknown";
   await sendSlackMessage(`got new email from ${displayName} <${email}>`);
