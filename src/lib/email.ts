@@ -67,7 +67,7 @@ export const respondToEmail = async (emailId: number) => {
 
   if (pastEmails?.data?.length === 1) {
     // Notify Slack of new user
-    await notifyNewUser(userName, userEmail);
+    await notifyNewUser(userName, userEmail, emailRecord.data?.text || "");
 
     // Generate secure random token (64-character hex string)
     const token = randomBytes(32).toString("hex");
@@ -109,7 +109,11 @@ Claude Tutor
     );
   } else {
     // Notify Slack of existing user email
-    await notifyExistingUserEmail(userName, userEmail);
+    await notifyExistingUserEmail(
+      userName,
+      userEmail,
+      emailRecord.data?.text || "",
+    );
 
     const sessionData = await supabaseAdmin
       .from("sessions")

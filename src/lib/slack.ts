@@ -1,4 +1,5 @@
 import { config } from "dotenv";
+import { WebClient } from "@slack/web-api";
 config();
 
 const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
@@ -16,25 +17,15 @@ export const sendSlackMessage = async (text: string): Promise<void> => {
     return;
   }
 
-  try {
-    const response = await fetch("https://slack.com/api/chat.postMessage", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        channel: SLACK_CHANNEL,
-        text,
-      }),
-    });
+  const slackClient = new WebClient(SLACK_BOT_TOKEN);
 
-    const data = await response.json();
-    if (!data.ok) {
-      console.error("Slack API error:", data.error);
-    }
+  try {
+    await slackClient.chat.postMessage({
+      channel: SLACK_CHANNEL,
+      text: text,
+    });
   } catch (error) {
-    console.error("Failed to send Slack message:", error);
+    console.error("Error sending Slack message:", error);
   }
 };
 
@@ -44,10 +35,11 @@ export const sendSlackMessage = async (text: string): Promise<void> => {
 export const notifyNewUser = async (
   name: string | null | undefined,
   email: string,
+  emailContent: string,
 ): Promise<void> => {
   const displayName = name || "Unknown";
   await sendSlackMessage(
-    `new user has entered the system via email ${displayName} <${email}>`,
+    `new user has entered the system via email ${displayName} <${email}>\n\`\`\`\n${emailContent}\n\`\`\``,
   );
 };
 
@@ -57,7 +49,10 @@ export const notifyNewUser = async (
 export const notifyExistingUserEmail = async (
   name: string | null | undefined,
   email: string,
+  emailContent: string,
 ): Promise<void> => {
   const displayName = name || "Unknown";
-  await sendSlackMessage(`got new email from ${displayName} <${email}>`);
+  await sendSlackMessage(
+    `got new email from ${displayName} <${email}>\n\`\`\`\n${emailContent}\n\`\`\``,
+  );
 };
