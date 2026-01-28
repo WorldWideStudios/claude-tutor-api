@@ -5,6 +5,8 @@ import { notifyExistingUserEmail, notifyNewUser } from "./slack";
 import { supabaseAdmin } from "./supabase";
 import { randomBytes } from "crypto";
 
+const FROM_EMAIL = process.env.FROM_EMAIL || "email@claudetutor.com";
+
 export const handleNewEmail = async (incomingEmail: IncomingEmail) => {
   const result = await supabaseAdmin
     .from("emails")
@@ -12,7 +14,7 @@ export const handleNewEmail = async (incomingEmail: IncomingEmail) => {
       subject: incomingEmail.subject,
       text: incomingEmail.text,
       from: incomingEmail.from.addresses[0]!.address,
-      to: "email@claudetutor.com",
+      to: FROM_EMAIL,
       inbound_id: incomingEmail.id,
       thread_id: incomingEmail.threadId,
       thread_position: incomingEmail.threadPosition,
@@ -181,7 +183,7 @@ export const sendEmail = async (to: string, subject: string, text: string) => {
   });
 
   const response = await inbound.emails.send({
-    from: "email@claudetutor.com",
+    from: FROM_EMAIL,
     to: to,
     subject: subject,
     text: text,
@@ -194,7 +196,7 @@ export const sendEmail = async (to: string, subject: string, text: string) => {
     subject: subject,
     text: text,
     to: to,
-    from: process.env.FROM_EMAIL!,
+    from: FROM_EMAIL,
     inbound_id: response.id,
     direction: "SEND",
   });
