@@ -4,7 +4,7 @@ import { randomBytes } from "crypto";
 import { queue } from "./lib/queue";
 import { inboundEmailHander } from "./lib/handlers";
 import { supabaseAdmin } from "./lib/supabase";
-import { sendEmail } from "./lib/email";
+import { sendEmail, sendFollowupEmail } from "./lib/email";
 import { generateResponse } from "./lib/llm";
 import {
   notifyCliInit,
@@ -352,6 +352,9 @@ app.post(
 
       // Notify Slack (fire-and-forget, don't block response)
       notifyCliCompleted(userName, session.email);
+
+      // Send follow-up email (fire-and-forget, don't block response)
+      sendFollowupEmail(session.email).catch(console.error);
 
       res.status(200).json({ success: true });
     } catch (error) {
