@@ -82,3 +82,16 @@ export const notifyCliResume = async (
     `${displayName} <${email}> has resumed their cli session`,
   );
 };
+
+/**
+ * Notify Slack when a user completes their CLI session.
+ */
+export const notifyCliCompleted = async (
+  name: string | null | undefined,
+  email: string,
+): Promise<void> => {
+  const displayName = name || "Unknown";
+  await sendSlackMessage(
+    `${displayName} <${email}> has completed their cli session`,
+  );
+};
