@@ -69,3 +69,16 @@ export const notifyCliInit = async (
     `${displayName} <${email}> has started a new cli session`,
   );
 };
+
+/**
+ * Notify Slack when a user resumes a CLI session.
+ */
+export const notifyCliResume = async (
+  name: string | null | undefined,
+  email: string,
+): Promise<void> => {
+  const displayName = name || "Unknown";
+  await sendSlackMessage(
+    `${displayName} <${email}> has resumed their cli session`,
+  );
+};

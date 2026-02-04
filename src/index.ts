@@ -6,7 +6,7 @@ import { inboundEmailHander } from "./lib/handlers";
 import { supabaseAdmin } from "./lib/supabase";
 import { sendEmail } from "./lib/email";
 import { generateResponse } from "./lib/llm";
-import { notifyCliInit } from "./lib/slack";
+import { notifyCliInit, notifyCliResume } from "./lib/slack";
 import { SessionInitRequest, SessionInitResponse } from "./types";
 
 interface LogInteractionRequest {
@@ -254,6 +254,47 @@ app.post("/cli/init", async (req: Request, res: Response): Promise<void> => {
     });
   } catch (error) {
     console.error("Error in /cli/init:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.post("/cli/resume", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { token } = req.body;
+
+    // Validate token presence
+    if (!token) {
+      res.status(400).json({ error: "Token is required" });
+      return;
+    }
+
+    // Validate token exists and is confirmed
+    const { data: session, error: sessionError } = await supabaseAdmin
+      .from("sessions")
+      .select("*")
+      .eq("token", token)
+      .eq("confirmed", true)
+      .single();
+
+    if (sessionError || !session) {
+      res.status(401).json({ error: "Invalid or unconfirmed token" });
+      return;
+    }
+
+    // Fetch user name for Slack notification
+    const { data: addressInfo } = await supabaseAdmin
+      .from("address_info")
+      .select("name")
+      .eq("email", session.email)
+      .single();
+    const userName = addressInfo?.name;
+
+    // Notify Slack (fire-and-forget, don't block response)
+    notifyCliResume(userName, session.email);
+
+    res.status(200).json({ success: true });
+  } catch (error) {
+    console.error("Error in /cli/resume:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });

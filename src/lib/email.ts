@@ -302,3 +302,178 @@ export const sendEmail = async (to: string, subject: string, text: string) => {
 
   console.log("got supabase result:", result);
 };
+
+export const sendFollowupEmail = async (userEmail: string) => {
+  // Fetch past emails for this user
+  const pastEmails = await supabaseAdmin
+    .from("emails")
+    .select("*")
+    .or(`from.eq.${userEmail},to.eq.${userEmail}`)
+    .order("created_at", { ascending: true });
+
+  // Get the most recent session for this user
+  const sessionData = await supabaseAdmin
+    .from("sessions")
+    .select("*")
+    .eq("email", userEmail)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .single();
+
+  let token: string | null = null;
+  if (sessionData.data) {
+    token = sessionData.data.token;
+  }
+
+  // Fetch CLI interactions for this session
+  let cliInteractions: { data: any[] | null } = { data: null };
+  if (token) {
+    cliInteractions = await supabaseAdmin
+      .from("cli_interactions")
+      .select("*")
+      .eq("session_token", token)
+      .order("created_at", { ascending: false })
+      .limit(50);
+  }
+
+  // Build unified history items with timestamps for chronological sorting
+  type HistoryItem = {
+    role: "user" | "assistant";
+    content: string;
+    created_at: string;
+    source: "email" | "cli";
+  };
+
+  const historyItems: HistoryItem[] = [];
+
+  // Add email history
+  if (pastEmails.data && pastEmails.data.length > 0) {
+    for (const email of pastEmails.data) {
+      historyItems.push({
+        role: email.direction === "SEND" ? "assistant" : "user",
+        content: email.text,
+        created_at: email.created_at,
+        source: "email",
+      });
+    }
+  }
+
+  // Add CLI interactions history (reversed to ascending order since we fetched desc)
+  if (cliInteractions.data && cliInteractions.data.length > 0) {
+    for (const interaction of cliInteractions.data.reverse()) {
+      const { interaction_type, question_text, answer_text, created_at } =
+        interaction;
+
+      if (
+        interaction_type === "initial_question" ||
+        interaction_type === "clarifying_question"
+      ) {
+        if (question_text) {
+          historyItems.push({
+            role: "assistant",
+            content: question_text,
+            created_at,
+            source: "cli",
+          });
+        }
+        if (answer_text) {
+          historyItems.push({
+            role: "user",
+            content: answer_text,
+            created_at,
+            source: "cli",
+          });
+        }
+        if (!question_text && !answer_text) {
+          historyItems.push({
+            role: "user",
+            content: "",
+            created_at,
+            source: "cli",
+          });
+        }
+      } else if (interaction_type === "user_selection") {
+        historyItems.push({
+          role: "user",
+          content: answer_text || "",
+          created_at,
+          source: "cli",
+        });
+      } else if (
+        interaction_type === "llm_response" ||
+        interaction_type === "profile_created"
+      ) {
+        historyItems.push({
+          role: "assistant",
+          content: answer_text || "",
+          created_at,
+          source: "cli",
+        });
+      } else {
+        historyItems.push({
+          role: answer_text ? "user" : "assistant",
+          content: answer_text || question_text || "",
+          created_at,
+          source: "cli",
+        });
+      }
+    }
+  }
+
+  // Sort all history items chronologically
+  historyItems.sort(
+    (a, b) =>
+      new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+  );
+
+  // Build final chat history with source prefixes
+  const chatHistory: {
+    role: "user" | "assistant";
+    content: string;
+  }[] = historyItems.map(({ role, content, source }) => ({
+    role,
+    content: `[${source === "email" ? "Email" : "CLI"}] ${content}`,
+  }));
+
+  // Add the summary request prompt
+  chatHistory.push({
+    role: "user",
+    content: `[System] Please analyze this user's learning journey and generate a follow-up summary email. Return your response as a JSON object with exactly two fields:
+- "subject": A personalized email subject line summarizing their learning journey
+- "body": An HTML-formatted email body that covers:
+  1. How they started (their initial question/goal)
+  2. What they learned and worked on during their session
+  3. Suggested next steps to continue their learning
+
+Keep the tone friendly and encouraging. The body should be well-formatted HTML suitable for an email.
+
+Return ONLY the JSON object, no additional text.`,
+  });
+
+  const response = await generateResponse(chatHistory, {
+    ...(token && { token }),
+    isEmail: true,
+  });
+
+  // Parse the JSON response
+  let subject = "Your Claude Tutor Learning Summary";
+  let body = response;
+
+  try {
+    // Try to extract JSON from the response (handle markdown code blocks)
+    let jsonStr = response;
+    const jsonMatch = response.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (jsonMatch) {
+      jsonStr = jsonMatch[1];
+    }
+    const parsed = JSON.parse(jsonStr);
+    if (parsed.subject && parsed.body) {
+      subject = parsed.subject;
+      body = parsed.body;
+    }
+  } catch (e) {
+    console.log("Failed to parse JSON response, using raw response as body");
+  }
+
+  await sendEmail(userEmail, subject, body);
+};
