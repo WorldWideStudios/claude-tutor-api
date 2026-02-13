@@ -287,6 +287,50 @@ app.get(
   },
 );
 
+// Get user info by session token
+app.post("/ext/getUser", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { code } = req.body;
+
+    if (!code) {
+      res.status(400).json({ error: "Code is required" });
+      return;
+    }
+
+    // Validate token exists and is confirmed
+    const { data: session, error: sessionError } = await supabaseAdmin
+      .from("sessions")
+      .select("*")
+      .eq("token", code)
+      .eq("confirmed", true)
+      .single();
+
+    if (sessionError || !session) {
+      res.status(401).json({ error: "Invalid or unconfirmed code" });
+      return;
+    }
+
+    // Get user info from address_info table
+    const { data: userInfo, error: userError } = await supabaseAdmin
+      .from("address_info")
+      .select("name")
+      .eq("email", session.email)
+      .single();
+
+    if (userError) {
+      console.error("Error fetching user info:", userError);
+      res.status(500).json({ error: "Failed to fetch user info" });
+      return;
+    }
+
+    // Return user info
+    res.status(200).json({ name: userInfo?.name || null });
+  } catch (error) {
+    console.error("Error getting user:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 app.post("/cli/init", async (req: Request, res: Response): Promise<void> => {
   try {
     const { token } = req.body;
