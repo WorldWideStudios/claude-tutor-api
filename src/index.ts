@@ -171,6 +171,122 @@ app.get(
   },
 );
 
+// Extension authentication endpoint (VS Code extension)
+app.post("/ext/auth", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      res.status(400).json({ error: "Email is required" });
+      return;
+    }
+
+    // Basic email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      res.status(400).json({ error: "Invalid email format" });
+      return;
+    }
+
+    // Generate secure random token (64-character hex string)
+    const token = randomBytes(32).toString("hex");
+
+    // Insert session into Supabase with session_type = 'code_extension'
+    const { error } = await supabaseAdmin.from("sessions").insert({
+      email,
+      token,
+      confirmed: false,
+      session_type: "code_extension",
+    });
+
+    if (error) {
+      console.error("Supabase error:", error);
+      res.status(500).json({ error: "Failed to create session" });
+      return;
+    }
+
+    // Save email to address_info table if not exists
+    const existing = await supabaseAdmin
+      .from("address_info")
+      .select("*")
+      .eq("email", email)
+      .single();
+
+    if (!existing.data) {
+      await supabaseAdmin.from("address_info").insert({
+        email: email,
+        name: null,
+      });
+    }
+
+    // Send confirmation email with link
+    const hostname = process.env.HOSTNAME || "http://localhost:3000";
+    const confirmLink = `${hostname}/ext/auth/confirm/${token}`;
+    const emailText = `Please confirm your VS Code extension session by clicking the following link:\n\n${confirmLink}\n\nThis will activate your Claude Tutor extension.`;
+    const emailSubject = "Confirm your VS Code extension session";
+
+    await sendEmail(email, emailSubject, emailText);
+
+    // Return success message
+    res.status(200).json({ success: true, message: "Confirmation email sent" });
+  } catch (error) {
+    console.error("Error creating extension session:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Extension authentication confirmation endpoint
+app.get(
+  "/ext/auth/confirm/:token",
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { token } = req.params;
+
+      if (!token) {
+        res.status(400).json({ error: "Token is required" });
+        return;
+      }
+
+      // Find the session by token
+      const { data: session, error: fetchError } = await supabaseAdmin
+        .from("sessions")
+        .select("*")
+        .eq("token", token)
+        .single();
+
+      if (fetchError || !session) {
+        res.status(404).json({ error: "Invalid or expired token" });
+        return;
+      }
+
+      // Check if already confirmed
+      if (session.confirmed) {
+        res
+          .status(200)
+          .json({ success: true, message: "Session already confirmed" });
+        return;
+      }
+
+      // Update the session to confirmed
+      const { error: updateError } = await supabaseAdmin
+        .from("sessions")
+        .update({ confirmed: true })
+        .eq("token", token);
+
+      if (updateError) {
+        console.error("Error updating session:", updateError);
+        res.status(500).json({ error: "Failed to confirm session" });
+        return;
+      }
+
+      res.status(200).json({ success: true, message: "Session confirmed" });
+    } catch (error) {
+      console.error("Error confirming extension session:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);
+
 app.post("/cli/init", async (req: Request, res: Response): Promise<void> => {
   try {
     const { token } = req.body;
